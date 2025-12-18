@@ -9,7 +9,7 @@ from typing import List, Optional
 
 from ..config import settings
 from ..utils.logger import logger, log_processing_time, log_success, log_error
-from .gemini_service import SYSTEM_PROMPT
+from .gemini_service import SYSTEM_PROMPT, strip_preamble
 from ..models.dom_event import format_events_for_prompt
 
 
@@ -102,27 +102,8 @@ class GroqService:
                 max_tokens=4096,
             )
             
-            cleaned_text = response.choices[0].message.content.strip()
-            
-            # Remove common LLM preambles that models sometimes add
-            preambles_to_remove = [
-                "Here's the polished, professional voiceover text:",
-                "Here's the polished professional voiceover text:",
-                "Here's the cleaned and polished voiceover text:",
-                "Here's the professional voiceover script:",
-                "Here is the polished voiceover text:",
-                "Here is the cleaned transcript:",
-                "Here's the cleaned version:",
-                "Here's the rewritten text:",
-            ]
-            for preamble in preambles_to_remove:
-                if cleaned_text.startswith(preamble):
-                    cleaned_text = cleaned_text[len(preamble):].strip()
-                    break
-            
-            # Also remove any leading/trailing quotes if present
-            if cleaned_text.startswith('"') and cleaned_text.endswith('"'):
-                cleaned_text = cleaned_text[1:-1].strip()
+            # Strip any preamble that the model might add despite instructions
+            cleaned_text = strip_preamble(response.choices[0].message.content)
             
             duration_ms = (time.time() - start_time) * 1000
             log_processing_time("Groq transcript cleaning", duration_ms)

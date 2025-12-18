@@ -7,18 +7,65 @@ import time
 from typing import List, Optional
 import google.generativeai as genai
 
+import re
+
 from ..config import settings
 from ..utils.logger import logger, log_processing_time, log_error, log_success
 from ..models.dom_event import format_events_for_prompt
 
 
-# System prompt for transcript cleaning into voiceover
+# Patterns to strip preamble/postamble from AI responses
+PREAMBLE_PATTERNS = [
+    r"^(?:Here(?:'s| is) (?:the |a )?(?:polished|rewritten|cleaned|revised|updated|final|translated|improved)?\s*(?:version of the |version of |the )?(?:script|text|voiceover|transcript|content)[:\s]*\n*)",
+    r"^(?:(?:The )?(?:polished|rewritten|cleaned|revised|updated|final|translated|improved)\s+(?:script|text|voiceover|transcript)(?:\s+is)?[:\s]*\n*)",
+    r"^(?:Sure[!,.]?\s*(?:Here(?:'s| is)[^:]*:)?\s*\n*)",
+    r"^(?:Certainly[!,.]?\s*(?:Here(?:'s| is)[^:]*:)?\s*\n*)",
+    r"^(?:Of course[!,.]?\s*(?:Here(?:'s| is)[^:]*:)?\s*\n*)",
+    r'^["\']',  # Leading quote
+    r'["\']$',  # Trailing quote
+]
+
+
+def strip_preamble(text: str) -> str:
+    """
+    Remove common AI preamble phrases from the output.
+    
+    Args:
+        text: Raw AI output text
+        
+    Returns:
+        Cleaned text without preamble
+    """
+    cleaned = text.strip()
+    
+    # Apply each pattern
+    for pattern in PREAMBLE_PATTERNS:
+        cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE | re.MULTILINE)
+    
+    # Clean up any remaining leading/trailing whitespace or newlines
+    cleaned = cleaned.strip()
+    
+    # Remove surrounding quotes if present
+    if (cleaned.startswith('"') and cleaned.endswith('"')) or \
+       (cleaned.startswith("'") and cleaned.endswith("'")):
+        cleaned = cleaned[1:-1].strip()
+    
+    return cleaned
+
+ # System prompt for transcript cleaning into voiceover
 SYSTEM_PROMPT = """You are an expert voiceover script writer. Your task is to transform 
 raw spoken transcripts into polished, professional voiceover scripts.
 
 YOUR GOAL: Clean up what the user SAID into natural, professional voiceover text.
 
-RULES:
+CRITICAL OUTPUT RULES:
+- Output ONLY the cleaned script text, nothing else
+- Do NOT start with "Here's", "Sure", "Certainly", or any introduction
+- Do NOT add any preamble like "Here is the polished script:"
+- Do NOT add any closing remarks like "Let me know if you need changes"
+- Just output the script directly, as if you ARE the voiceover narrator
+
+CONTENT RULES:
 1. Remove filler words (uh, um, so, like, you know, basically, actually, etc.)
 2. Fix grammatical errors and awkward phrasing
 3. Keep the SAME meaning and message as the original transcript
@@ -37,8 +84,8 @@ OUTPUT FORMAT:
 - Natural, flowing voiceover text
 - No markdown, bullet points, or numbered steps
 - Should sound like a professional narrator speaking
+- START DIRECTLY with the script content
 """
-
 
 class GeminiService:
     """Service for interacting with Google Gemini API."""
@@ -116,7 +163,7 @@ class GeminiService:
             response = self.model.generate_content(
                 [
                     {"role": "user", "parts": [SYSTEM_PROMPT]},
-                    {"role": "model", "parts": ["I understand. I'll transform the spoken transcript into natural, professional voiceover text while preserving its original meaning."]},
+                    {"role": "model", "parts": ["Understood. I will output only the cleaned voiceover script with no preamble, introduction, or commentary."]},
                     {"role": "user", "parts": [user_prompt]},
                 ],
                 generation_config=genai.types.GenerationConfig(
@@ -126,7 +173,8 @@ class GeminiService:
                 )
             )
             
-            cleaned_text = response.text.strip()
+            # Strip any preamble that the model might add despite instructions
+            cleaned_text = strip_preamble(response.text)
             
             duration_ms = (time.time() - start_time) * 1000
             log_processing_time("Gemini transcript cleaning", duration_ms)
