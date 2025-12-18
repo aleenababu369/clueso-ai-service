@@ -5,6 +5,7 @@ Python FastAPI service for AI-powered transcript cleaning and voiceover generati
 ## ✨ Features
 
 - 🎯 **Transcript Cleaning** - Clean up spoken transcripts into professional voiceover scripts
+- 🎯 **Transcript Translation** - Translate transcripts into professional voiceover scripts
 - 🔊 **Voice Synthesis** - Generate natural voiceover audio using ElevenLabs
 - 🔄 **Multi-Provider Fallback** - Gemini → OpenAI → Groq fallback chain
 - 🆓 **Free Tier Support** - Works with Groq's free API
@@ -23,15 +24,15 @@ Python FastAPI service for AI-powered transcript cleaning and voiceover generati
 │                      │                                       │
 │        ┌─────────────┴─────────────┐                        │
 │        ▼                           ▼                        │
-│   ┌──────────┐              ┌──────────────┐               │
-│   │ Transcript│              │  Voiceover   │               │
-│   │ Cleaning  │              │  Generation  │               │
-│   └─────┬────┘              └──────┬───────┘               │
+│   ┌──────────────┐              ┌──────────────┐             │
+│   │ Transcript    │             │  Voiceover   │             │
+│   │ Cleaning/Translation│       │  Generation  │             │
+│   └─────┬───────┘              └──────┬───────┘             │
 │         │                          │                        │
 │    ┌────┴────┐                     │                        │
 │    ▼    ▼    ▼                     ▼                        │
 │ Gemini OpenAI Groq           ElevenLabs                     │
-│                                                              │
+│                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -159,6 +160,38 @@ Response:
   "audio_format": "wav"
 }
 ```
+
+### Process with Translation
+
+To translate the transcript into another language, include the `target_language` parameter:
+
+```http
+POST /process
+Content-Type: application/json
+
+{
+  "transcript": "So today we're going to learn how to create a project...",
+  "dom_events": [],
+  "target_language": "es"
+}
+```
+
+**Supported Languages:**
+
+| Code | Language          |
+| ---- | ----------------- |
+| `en` | English (default) |
+| `es` | Spanish           |
+| `fr` | French            |
+| `de` | German            |
+| `hi` | Hindi             |
+| `ja` | Japanese          |
+| `pt` | Portuguese        |
+
+When `target_language` is set to a non-English language:
+
+1. The AI cleans the transcript AND translates it
+2. ElevenLabs uses the `eleven_multilingual_v2` model for natural pronunciation
 
 ### Interactive Docs
 
@@ -303,6 +336,36 @@ max_tokens = 4096    # Max output length
 | **OpenAI**     | [platform.openai.com](https://platform.openai.com) | Paid, high quality             |
 | **Groq**       | [console.groq.com](https://console.groq.com)       | **FREE**, recommended fallback |
 | **ElevenLabs** | [elevenlabs.io](https://elevenlabs.io)             | Free tier: 10k chars/month     |
+
+## 🏛️ Architecture Decisions
+
+### Why Multi-Provider Fallback Chain?
+
+- Gemini has generous free tier but rate limits
+- OpenAI is reliable but paid
+- Groq is completely free with good quality
+- Automatic failover ensures high availability
+
+### Why Separate AI Service (Python)?
+
+- Python has best ML/AI library ecosystem
+- Easier integration with Gemini, OpenAI, Groq SDKs
+- Can be scaled independently from Node.js backend
+- FastAPI provides async performance
+
+### Why ElevenLabs for Voice?
+
+- Natural-sounding voices
+- Multilingual support with `eleven_multilingual_v2`
+- Simple API integration
+- Free tier for development
+
+### Why Clean Transcript Before TTS?
+
+- Raw spoken text has filler words (uh, um)
+- Grammar errors sound unnatural in TTS
+- Professional voiceover requires polished script
+- Translation works better on clean text
 
 ## 📄 License
 
